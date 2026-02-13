@@ -1,10 +1,28 @@
 const { chromium } = require('playwright');
+const fs = require('fs');
+const path = require('path');
 
 class WafSession {
-    constructor(baseUrl) {
+    constructor(baseUrl, cookieFile) {
         this.baseUrl = baseUrl;
         this.cookies = null;
         this._solving = null; // mutex: shared promise while a solve is in-flight
+
+        // Default cookie file: config/cookies-<sanitized-origin>.json
+        if (cookieFile) {
+            this._cookieFile = cookieFile;
+        } else {
+            const sanitized = new URL(baseUrl).origin.replace(/[^a-zA-Z0-9]/g, '_');
+            this._cookieFile = path.join(__dirname, 'config', `cookies-${sanitized}.json`);
+        }
+
+        // Attempt to load persisted cookies
+        try {
+            const data = fs.readFileSync(this._cookieFile, 'utf8');
+            this.cookies = JSON.parse(data);
+        } catch {
+            // Missing or corrupt file — will solve on first use
+        }
     }
 
     /** Solve the WAF challenge and extract cookies. */
@@ -37,6 +55,15 @@ class WafSession {
             this.cookies = browserCookies;
 
             console.log(`[WAF] Challenge solved. Got ${browserCookies.length} cookies: ${browserCookies.map(c => c.name).join(', ')}`);
+
+            // Persist cookies to disk
+            try {
+                fs.mkdirSync(path.dirname(this._cookieFile), { recursive: true });
+                fs.writeFileSync(this._cookieFile, JSON.stringify(browserCookies, null, 2));
+                console.log(`[WAF] Cookies saved to ${this._cookieFile}`);
+            } catch (writeErr) {
+                console.warn(`[WAF] Failed to save cookies: ${writeErr.message}`);
+            }
         } catch (err) {
             console.error(`[WAF] Failed to solve challenge: ${err.message}`);
             throw err;
@@ -54,6 +81,11 @@ class WafSession {
     /** Mark cookies as stale so the next getCookieHeader() re-solves. */
     invalidate() {
         this.cookies = null;
+        try {
+            fs.unlinkSync(this._cookieFile);
+        } catch {
+            // File may not exist — that's fine
+        }
     }
 }
 
