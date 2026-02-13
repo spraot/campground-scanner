@@ -53,22 +53,6 @@ const bcBookingParams = Object.assign({}, commonParams, bookingParams, {
     subEquipmentCategoryId: bcSearchParams.subEquipmentCategoryId,
 })
 
-const shuttleParams = {
-    searchParams: {
-        bookingCategoryId: 9, 
-        filterData: '', 
-        bookingUid: '2765bac6-2a1f-4735-a47c-691f3c5d5629',
-        cartUid: '2765bac6-2a1f-4735-a47c-691f3c5d5629',
-        isReserving: true,
-        partySize: 3,
-    }, 
-    bookingParams: {
-        bookingCategoryId: 9, 
-        flexibleSearch: '',
-        partySize: 3,
-    }
-}
-
 const canadaBaseUrl = 'https://reservation.pc.gc.ca/'
 const bcBaseUrl = 'https://camping.bcparks.ca/'
 
@@ -79,12 +63,11 @@ function resolveBaseUrl(key) {
 }
 const searchUrl = `api/availability/map`
 const bookingUrl = `create-booking/results`
-const campDetailsUrl = `api/maps/mapdatabyid`
-const siteDetailsUrl = `api/resource/details`
+const resourceLocationUrl = `api/resourceLocation`
 const changeBookingUrl = 'account/all-bookings'
 
-const mapNames = {}
-const siteNames = {}
+// Cache of resourceLocation data per origin, keyed by base URL
+const resourceLocationCache = {}
 
 async function update() {
     for (const search of searches) {
@@ -93,91 +76,47 @@ async function update() {
         const type = search.type || 'map';
 
         if (type === 'site') {
-            checkSiteAvailability(baseUrl, search.mapId, search.siteId, search.startDate, search.endDate);
+            await checkSiteAvailability(baseUrl, search.mapId, search.siteId, search.startDate, search.endDate, label);
         } else {
-            findAvailableSite(baseUrl, search.mapId, search.startDate, search.endDate);
+            await findAvailableSite(baseUrl, search.mapId, search.startDate, search.endDate, label);
         }
     }
 }
 
-async function checkSiteAvailability(baseUrl, mapId, siteId, startDate, endDate, opts) {
-    opts = opts || {}
-    return fetch(baseUrl+searchUrl + '?' + new URLSearchParams(Object.assign({ mapId }, baseUrl == canadaBaseUrl ? canadaSearchParams : bcSearchParams, {startDate, endDate, ...opts?.searchParams})))
+async function getResourceLocations(baseUrl) {
+    if (!resourceLocationCache[baseUrl]) {
+        const response = await fetch(baseUrl + resourceLocationUrl);
+        resourceLocationCache[baseUrl] = await response.json();
+    }
+    return resourceLocationCache[baseUrl];
+}
+
+function findResourceLocation(locations, searchName) {
+    if (!searchName) return null;
+    const lower = searchName.toLowerCase();
+    return locations.find(loc => {
+        const en = loc.localizedValues?.find(l => l.cultureName.startsWith('en'));
+        return en?.fullName?.toLowerCase().includes(lower)
+            || en?.shortName?.toLowerCase().includes(lower);
+    }) || null;
+}
+
+async function checkSiteAvailability(baseUrl, mapId, siteId, startDate, endDate, searchName) {
+    return fetch(baseUrl+searchUrl + '?' + new URLSearchParams(Object.assign({ mapId }, baseUrl == canadaBaseUrl ? canadaSearchParams : bcSearchParams, {startDate, endDate})))
         .then(response => response.json())
         .then(async data => {
             if (data.resourceAvailabilities[siteId][0].availability == 0) {
-                notify(`Campside ${await getSiteName(baseUrl, siteId).name} at ${await getMapName(baseUrl, mapId)} available!`, '', baseUrl+changeBookingUrl, 1)
+                const label = searchName || `Site ${siteId}`;
+                notify(`Campsite ${label} available!`, '', baseUrl+changeBookingUrl, 1)
             }
         })
 }
 
-async function getSiteName(baseUrl, resourceId, opts) {
-    if (!siteNames[resourceId]) {
-        try {
-            siteNames[resourceId] = await fetch(baseUrl+siteDetailsUrl + '?' + new URLSearchParams({ resourceId }))
-                .then(response => response.json())
-                .then(data => {return {resourceLocationId: data.resourceLocationId, name: getLocalizedName(data.localizedValues)}})
-        } catch (e) {
-            console.error(`Couldn't get site name for resource ID ${resourceId} due to error ${e}`)
-            return {resourceLocationId: '', name: ''};
-        }
-    }
-    return siteNames[resourceId];
-}
 
-function getLocalizedName(localizedValues) {
-    // return undefined if localizedValues is not iterable
-    if (!localizedValues?.[Symbol.iterator]) {
-        return;
-    }
-
-    for (const value of localizedValues) {
-        if (value.cultureName.startsWith('en')) {
-            return value.name || value.title;
-        }
-    }
-}
-
-async function getMapName(baseUrl, mapId, opts) {
-    if (!mapNames[mapId]) {
-        const names = []
-        try {
-            const mapData = await fetch(baseUrl+campDetailsUrl, 
-                {
-                    method: 'post', 
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({mapId})
-                })
-            .then(response => response.json())
-            const title = getLocalizedName(mapData.map?.localizedValues)
-            if (title) {
-                names.push(title)
-            }   
-
-            if (mapData.map?.parentMaps?.length) {
-                names.unshift(await getMapName(baseUrl, mapData.map.parentMaps[0], opts))
-            }    
-        } catch (e) {
-            console.error(`Couldn't get map name for resource ID ${mapId} due to error ${e}`)
-            return names.join(' - ')
-        }
-        mapNames[mapId] = names.join(' - ')
-    }
-    return mapNames[mapId]
-}
-
-
-async function checkAvailability(baseUrl, mapId, startDate, endDate, opts) {
-    const url = baseUrl+searchUrl + '?' + new URLSearchParams(Object.assign({ mapId }, baseUrl == canadaBaseUrl ? canadaSearchParams : bcSearchParams, {startDate, endDate, ...opts?.searchParams}))
+async function checkAvailability(baseUrl, mapId, startDate, endDate) {
+    const url = baseUrl+searchUrl + '?' + new URLSearchParams(Object.assign({ mapId }, baseUrl == canadaBaseUrl ? canadaSearchParams : bcSearchParams, {startDate, endDate}))
     return fetch(url)
         .then(response => response.json())
-        .then(data => {
-            console.log(url, JSON.stringify(data).substring(0, 200))
-            return data
-        })
         .then(data => {
             const maps = data.mapLinkAvailabilities || {}
             const campgrounds = data.resourceAvailabilities || {}
@@ -189,32 +128,29 @@ async function checkAvailability(baseUrl, mapId, startDate, endDate, opts) {
         })
 }
 
-async function checkMapRecursive(baseUrl, mapId, startDate, endDate, opts) {
+async function checkMapRecursive(baseUrl, mapId, startDate, endDate) {
     const campgrounds = []
-    const result = await checkAvailability(baseUrl, mapId, startDate, endDate, opts)
+    const result = await checkAvailability(baseUrl, mapId, startDate, endDate)
     campgrounds.push(...result.campgrounds)
     for (const m of result.maps) {
-        campgrounds.push(...await checkMapRecursive(baseUrl, m, startDate, endDate, opts))
+        campgrounds.push(...await checkMapRecursive(baseUrl, m, startDate, endDate))
     }
     return campgrounds
 }
 
 const errors = {}
 
-async function findAvailableSite(baseUrl, mapId, startDate, endDate, opts) {
-    opts = opts || {}
+async function findAvailableSite(baseUrl, mapId, startDate, endDate, searchName) {
     try {
-        const campgrounds = await checkMapRecursive(baseUrl, mapId, startDate, endDate, opts)
+        const locations = await getResourceLocations(baseUrl);
+        const location = findResourceLocation(locations, searchName);
+        const resourceLocationId = location?.resourceLocationId || '';
+
+        const campgrounds = await checkMapRecursive(baseUrl, mapId, startDate, endDate)
         for (const m of campgrounds) {
-            const siteDetails = await getSiteName(baseUrl, m[1], opts)
-            const name = await getMapName(baseUrl, m[0], opts) + ' - ' + siteDetails.name
-            if (name?.includes('(Last Minute)')) continue;
-            if (opts?.resourceLocationIdsToSkip?.includes(siteDetails.resourceLocationId)) continue;
-            const url = baseUrl + bookingUrl + '?' + new URLSearchParams(Object.assign({ mapId: m[0], resourceLocationId: siteDetails.resourceLocationId }, baseUrl == canadaBaseUrl ? canadaBookingParams : bcBookingParams, {startDate, endDate, ...opts?.bookingParams}))
-            await notify('Campground available!', `${name}`, url, 1)
-        }
-        if (!campgrounds.length) {
-            // console.log('No campgrounds available')
+            const label = searchName || `Map ${m[0]}`;
+            const url = baseUrl + bookingUrl + '?' + new URLSearchParams(Object.assign({ mapId: m[0], resourceLocationId }, baseUrl == canadaBaseUrl ? canadaBookingParams : bcBookingParams, {startDate, endDate}))
+            await notify('Campground available!', label, url, 1)
         }
     } catch (e) {
         if (errors[e.message] > new Date() - 30*60*1000) {
@@ -226,7 +162,17 @@ async function findAvailableSite(baseUrl, mapId, startDate, endDate, opts) {
     }
 }
 
-update();
-if (require.main !== module) {
-  setInterval(update, 60*1000);
+async function loop() {
+  try {
+    await update();
+  } catch (e) {
+    console.error('Update failed:', e.message);
+  }
+  setTimeout(loop, 60*1000);
+}
+
+if (require.main === module) {
+  update();
+} else {
+  loop();
 }
