@@ -47,17 +47,21 @@ cp config/searches.example.json config/searches.json
 
 ### 3. Run
 
-Locally (runs once):
+Locally (runs once, logs to console):
 
 ```
 node campground-scanner.js
 ```
 
-With Docker Compose (polls every 60 seconds):
+With Docker Compose (polls every 60 seconds, sends Pushover notifications):
 
 ```
 docker compose up -d
 ```
+
+### Service mode
+
+The `SERVICE_MODE=1` environment variable enables loop polling and Pushover notifications. This is set automatically in `docker-compose.yml`. Without it, running the script directly does a single check with console output.
 
 ## Docker
 

@@ -1,6 +1,8 @@
 services:
   scanner:
     build: .
+    environment:
+      - SERVICE_MODE=1
     volumes:
       - ./config:/app/config
     restart: unless-stopped

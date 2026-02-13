@@ -4,8 +4,9 @@ const searches = require('./config/searches.json');
 const pushover = () => new Pushover(credentials.pushover.adminGroup, credentials.pushover.token);
 const fetch = require("./waf-fetch");
 
+const serviceMode = process.env.SERVICE_MODE === '1';
 let notify = async (title, message, url, priority) => await pushover().setUrl(url).setPriority(priority).send(title, message);
-if (require.main === module) {
+if (require.main === module && !serviceMode) {
   notify = async (title, message, url) => console.log(title, message, url);
 }
 const URLSearchParams = require('url').URLSearchParams
@@ -171,8 +172,8 @@ async function loop() {
   setTimeout(loop, 60*1000);
 }
 
-if (require.main === module) {
-  update();
-} else {
+if (require.main !== module || serviceMode) {
   loop();
+} else {
+  update();
 }
