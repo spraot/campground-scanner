@@ -148,10 +148,11 @@ async function findAvailableSite(baseUrl, mapId, startDate, endDate, searchName)
         const resourceLocationId = location?.resourceLocationId || '';
 
         const campgrounds = await checkMapRecursive(baseUrl, mapId, startDate, endDate)
-        for (const m of campgrounds) {
-            const label = searchName || `Map ${m[0]}`;
-            const url = baseUrl + bookingUrl + '?' + new URLSearchParams(Object.assign({ mapId: m[0], resourceLocationId }, baseUrl == canadaBaseUrl ? canadaBookingParams : bcBookingParams, {startDate, endDate}))
-            await notify('Campground available!', label, url, 1)
+        if (campgrounds.length) {
+            const label = searchName || `Map ${mapId}`;
+            const siteCount = campgrounds.length === 1 ? '1 site' : `${campgrounds.length} sites`;
+            const url = baseUrl + bookingUrl + '?' + new URLSearchParams(Object.assign({ mapId: campgrounds[0][0], resourceLocationId }, baseUrl == canadaBaseUrl ? canadaBookingParams : bcBookingParams, {startDate, endDate}))
+            await notify(`${label} available!`, siteCount, url, 1)
         }
     } catch (e) {
         if (errors[e.message] > new Date() - 30*60*1000) {
