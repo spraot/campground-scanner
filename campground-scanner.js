@@ -24,8 +24,8 @@ const searchParams = {
 
 const canadaSearchParams = Object.assign({}, searchParams, {
     subEquipmentCategoryId: -32760,
-    // filterData: '[]'
-    filterData: '[{"attributeDefinitionId":-32582,"attributeType":0,"enumValues":[1],"attributeDefinitionDecimalValue":0,"filterStrategy":1},{"attributeDefinitionId":-32756,"attributeType":0,"enumValues":[1],"attributeDefinitionDecimalValue":0,"filterStrategy":1}]'
+    // Full service: Electric + Water + Sewer
+    filterData: '[{"attributeDefinitionId":-32582,"attributeType":0,"enumValues":[1],"attributeDefinitionDecimalValue":0,"filterStrategy":1},{"attributeDefinitionId":-32736,"attributeType":0,"enumValues":[0],"attributeDefinitionDecimalValue":0,"filterStrategy":1},{"attributeDefinitionId":-32735,"attributeType":0,"enumValues":[0],"attributeDefinitionDecimalValue":0,"filterStrategy":1}]'
 })
 
 const bcSearchParams = Object.assign({}, searchParams, {
