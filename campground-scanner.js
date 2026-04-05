@@ -162,10 +162,11 @@ async function findAvailableSite(baseUrl, mapId, startDate, endDate, searchName)
             await notify(`${label} available!`, siteCount, url, 1)
         }
     } catch (e) {
-        if (errors[e.message] > new Date() - 30*60*1000) {
+        if (errors[e.message] > new Date() - 2*60*60*1000) {
             // do nothing
         } else {
             await notify('Error searching for campground', e.message, null, -1)
+            console.error('Error searching for campground:', e.message);
             errors[e.message] = new Date()
         }
     }
